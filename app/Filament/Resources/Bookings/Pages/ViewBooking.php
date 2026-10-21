@@ -14,6 +14,10 @@ class ViewBooking extends ViewRecord
         return [
             BookingResource::confirmationAction(),
             BookingResource::cancellationAction(),
+            BookingResource::checkInAction(),
+            BookingResource::checkOutAction(),
+            BookingResource::equipmentHandoverAction(),
+            BookingResource::markNoShowAction(),
         ];
     }
 

@@ -5,8 +5,8 @@
 @section('content')
 
 <!-- HERO -->
-<section class="relative bg-gray-800 text-white">
-    <div class="absolute inset-0 bg-[url('https://via.placeholder.com/1600x900.png?text=Embung+Bansari')] bg-center bg-cover opacity-60"></div>
+<section class="relative bg-[#253C6D] text-white">
+    <div class="absolute inset-0 bg-[url('https://via.placeholder.com')] bg-center bg-cover opacity-60"></div>
     <div class="relative max-w-7xl mx-auto px-4 py-24">
         <span class="inline-block bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-sm">Camping di Embung Bansari</span>
         <h1 class="mt-6 text-3xl md:text-4xl font-bold">Rasakan Serunya Camping dengan Pemandangan Alam Embung Bansari</h1>

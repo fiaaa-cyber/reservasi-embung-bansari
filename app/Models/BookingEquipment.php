@@ -2,8 +2,6 @@
 
 namespace App\Models;
 
-use App\Models\Booking;
-use App\Models\Equipment;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -14,13 +12,21 @@ class BookingEquipment extends Model
     protected $table = 'booking_equipment';
 
     protected $fillable = [
-        'booking_id', 'equipment_id', 'quantity', 'price', 'subtotal'
+        'booking_id',
+        'equipment_id',
+        'quantity',
+        'price',
+        'subtotal',
+        'handed_over_at',
+        'stock_released_at',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'price' => 'decimal:2',
         'subtotal' => 'decimal:2',
+        'handed_over_at' => 'datetime',
+        'stock_released_at' => 'datetime',
     ];
 
     public function booking()

@@ -156,7 +156,7 @@
 
         <!-- 4. Data Pemesan -->
         <section class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <h2 class="text-lg font-semibold">4. Data Pemesan</h2>
+            <h2 class="text-lg font-semibold">3. Data Pemesan</h2>
             <div class="mt-4 grid gap-4 md:grid-cols-2">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Nama Lengkap</label>

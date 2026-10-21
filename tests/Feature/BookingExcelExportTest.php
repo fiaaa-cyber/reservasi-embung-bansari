@@ -98,6 +98,7 @@ test('export filters reservation status correctly', function (string $status, st
     createExcelExportBooking(['booking_code' => 'PENDING', 'status' => 'pending_confirmation']);
     createExcelExportBooking(['booking_code' => 'CONFIRMED', 'status' => 'confirmed']);
     createExcelExportBooking(['booking_code' => 'CANCELLED', 'status' => 'cancelled']);
+    createExcelExportBooking(['booking_code' => 'NO-SHOW', 'status' => 'no_show']);
 
     $export = exportBookings(defaultBookingExportFilters(['status' => $status]));
 
@@ -106,6 +107,7 @@ test('export filters reservation status correctly', function (string $status, st
     'confirmed status' => ['confirmed', 'CONFIRMED'],
     'pending confirmation status' => ['pending_confirmation', 'PENDING'],
     'cancelled status' => ['cancelled', 'CANCELLED'],
+    'no-show status' => ['no_show', 'NO-SHOW'],
 ]);
 
 test('export filters reservation type from package id nullability', function (string $type, string $expectedCode) {
@@ -223,7 +225,7 @@ test('export formats package people labels payment labels and dates for admins',
     expect($row[5])->toBe('12/10/2026')
         ->and($row[6])->toBe('Paket')
         ->and($row[7])->toBe('Paket A')
-        ->and((int) $row[8])->toBe(4)
+        ->and((int) $row[8])->toBe(8)
         ->and($row[10])->toBe('Rp 250.000')
         ->and($row[11])->toBe('Dikonfirmasi')
         ->and($row[12])->toBe('Pembayaran Online - DP 50%')

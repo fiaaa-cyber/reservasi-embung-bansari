@@ -28,6 +28,12 @@ class ReservationPaymentStats extends StatsOverviewWidget
             Stat::make('Reservasi Dikonfirmasi', Booking::query()->where('status', 'confirmed')->count())
                 ->icon(Heroicon::OutlinedCheckCircle)
                 ->color('success'),
+            Stat::make('Sudah Check-in', Booking::query()->where('status', 'checked_in')->count())
+                ->icon(Heroicon::OutlinedCheckCircle)
+                ->color('success'),
+            Stat::make('No-show', Booking::query()->where('status', 'no_show')->count())
+                ->icon(Heroicon::OutlinedExclamationCircle)
+                ->color('danger'),
             Stat::make('Belum Dibayar', Payment::query()->where('status', 'unpaid')->count())
                 ->icon(Heroicon::OutlinedExclamationCircle)
                 ->color('danger'),

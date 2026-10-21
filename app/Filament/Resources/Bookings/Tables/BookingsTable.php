@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Bookings\Tables;
 
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
 use App\Models\Booking;
 use App\Filament\Resources\Bookings\BookingResource;
@@ -45,9 +46,7 @@ class BookingsTable
                     ->placeholder('Tanpa Paket'),
                 TextColumn::make('number_of_people')
                     ->label('Jumlah Orang')
-                    ->state(fn (Booking $record): ?int => $record->package_id !== null
-                        ? (int) ($record->package?->capacity ?? 4)
-                        : $record->number_of_people)
+                    ->state(fn (Booking $record): int => $record->capacityPeople())
                     ->formatStateUsing(fn ($state): string => filled($state) ? "{$state} orang" : '-')
                     ->sortable(),
                 TextColumn::make('total_price')
@@ -60,6 +59,9 @@ class BookingsTable
                         'pending_confirmation' => 'Menunggu Konfirmasi',
                         'confirmed' => 'Dikonfirmasi',
                         'cancelled' => 'Dibatalkan',
+                        'checked_in' => 'Sudah Check-in',
+                        'checked_out' => 'Sudah Check-out',
+                        'no_show' => 'No-show',
                         default => ucfirst($state),
                     })
                     ->badge()
@@ -67,6 +69,9 @@ class BookingsTable
                         'confirmed' => 'success',
                         'pending_confirmation' => 'warning',
                         'cancelled' => 'danger',
+                        'checked_in' => 'success',
+                        'checked_out' => 'gray',
+                        'no_show' => 'danger',
                         default => 'gray',
                     }),
                 TextColumn::make('email')
@@ -94,6 +99,9 @@ class BookingsTable
                                 'pending_confirmation' => 'Menunggu Konfirmasi',
                                 'confirmed' => 'Dikonfirmasi',
                                 'cancelled' => 'Dibatalkan',
+                                'checked_in' => 'Sudah Check-in',
+                                'checked_out' => 'Sudah Check-out',
+                                'no_show' => 'No-show',
                             ])
                             ->default('all')
                             ->required(),
@@ -123,7 +131,31 @@ class BookingsTable
                         'pending_confirmation' => 'Menunggu Konfirmasi',
                         'confirmed' => 'Dikonfirmasi',
                         'cancelled' => 'Dibatalkan',
+                        'checked_in' => 'Sudah Check-in',
+                        'checked_out' => 'Sudah Check-out',
+                        'no_show' => 'No-show',
                     ]),
+                Filter::make('no_show_candidates')
+                    ->label('Kandidat Pemeriksaan No-show')
+                    ->query(function (Builder $query): Builder {
+                        $now = now('Asia/Jakarta');
+                        $today = $now->toDateString();
+
+                        return $query
+                            ->whereIn('status', ['pending_confirmation', 'confirmed'])
+                            ->whereNull('checked_in_at')
+                            ->whereNull('checked_out_at')
+                            ->whereNull('no_show_at')
+                            ->where(function (Builder $query) use ($now, $today): Builder {
+                                $query->whereDate('booking_date', '<', $today);
+
+                                if ($now->format('H:i:s') >= '14:00:00') {
+                                    $query->orWhereDate('booking_date', $today);
+                                }
+
+                                return $query;
+                            });
+                    }),
                 SelectFilter::make('reservation_type')
                     ->label('Jenis Reservasi')
                     ->options([
@@ -146,9 +178,17 @@ class BookingsTable
                         ->when($data['until'] ?? null, fn (Builder $query, string $date): Builder => $query->whereDate('booking_date', '<=', $date))),
             ])
             ->recordActions([
-                BookingResource::confirmationAction(),
-                BookingResource::cancellationAction(),
-                ViewAction::make(),
+                ActionGroup::make([
+                    ViewAction::make()->label('Lihat Detail'),
+                    BookingResource::confirmationAction(),
+                    BookingResource::checkInAction(),
+                    BookingResource::checkOutAction(),
+                    BookingResource::equipmentHandoverAction(),
+                    BookingResource::markNoShowAction(),
+                    BookingResource::cancellationAction(),
+                ])
+                    ->icon(Heroicon::EllipsisVertical)
+                    ->tooltip('Aksi booking'),
             ]);
     }
 }

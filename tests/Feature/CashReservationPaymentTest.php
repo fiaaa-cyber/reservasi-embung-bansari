@@ -1,17 +1,23 @@
 <?php
 
+use App\Filament\Resources\Bookings\BookingResource;
+use App\Filament\Resources\Payments\PaymentResource;
 use App\Models\Booking;
 use App\Models\BookingEquipment;
 use App\Models\Equipment;
 use App\Models\Package;
 use App\Models\Payment;
 use App\Models\ReservationDraft;
-use App\Filament\Resources\Bookings\BookingResource;
-use App\Filament\Resources\Payments\PaymentResource;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    $this->withoutVite();
+});
 
 test('cash payment creates a searchable booking and consumes equipment once', function () {
     $equipment = Equipment::create([
@@ -141,7 +147,7 @@ test('active reservation and payment statuses continue to consume daily capacity
             'paid' => 'qris_full',
             default => 'cash',
         },
-        'transaction_id' => 'PAYMENT-EXISTING-' . strtoupper($paymentStatus),
+        'transaction_id' => 'PAYMENT-EXISTING-'.strtoupper($paymentStatus),
         'amount' => 100000,
         'status' => $paymentStatus,
         'paid_at' => $paymentStatus === 'unpaid' ? null : now(),
@@ -186,7 +192,7 @@ test('daily camping capacity uses active people totals for the requested date', 
         $packageId = null;
         if ($existing['package'] ?? false) {
             $packageId = Package::create([
-                'name' => 'Existing Package ' . $index,
+                'name' => 'Existing Package '.$index,
                 'description' => 'Test package',
                 'price' => 250000,
                 'capacity' => 4,
@@ -195,13 +201,13 @@ test('daily camping capacity uses active people totals for the requested date', 
         }
 
         $booking = Booking::create([
-            'booking_code' => 'BOOKING-CAPACITY-' . $index,
+            'booking_code' => 'BOOKING-CAPACITY-'.$index,
             'package_id' => $packageId,
             'booking_date' => $dateForOffset($existing['date_offset'] ?? 0),
             'number_of_people' => $packageId === null ? ($existing['people'] ?? 1) : null,
-            'name' => 'Existing Customer ' . $index,
-            'email' => 'existing' . $index . '@gmail.com',
-            'phone' => '081234567' . str_pad((string) $index, 3, '0', STR_PAD_LEFT),
+            'name' => 'Existing Customer '.$index,
+            'email' => 'existing'.$index.'@gmail.com',
+            'phone' => '081234567'.str_pad((string) $index, 3, '0', STR_PAD_LEFT),
             'total_package' => 0,
             'total_equipment' => 0,
             'total_price' => 0,
@@ -212,7 +218,7 @@ test('daily camping capacity uses active people totals for the requested date', 
             Payment::create([
                 'booking_id' => $booking->id,
                 'payment_method' => $existing['payment_status'] === 'dp' ? 'qris_dp' : 'qris_full',
-                'transaction_id' => 'PAYMENT-CAPACITY-' . $index,
+                'transaction_id' => 'PAYMENT-CAPACITY-'.$index,
                 'amount' => 1,
                 'status' => $existing['payment_status'],
             ]);
@@ -246,20 +252,22 @@ test('daily camping capacity uses active people totals for the requested date', 
         expect(ReservationDraft::count())->toBe(1);
     } else {
         $response->assertRedirect(route('reservasi'))
-            ->assertSessionHas('capacity_reservation', fn (array $summary): bool =>
-                $summary['used_capacity'] === $expectedUsedCapacity
+            ->assertSessionHas('capacity_reservation', fn (array $summary): bool => $summary['used_capacity'] === $expectedUsedCapacity
                 && $summary['requested_capacity'] === $requestedPeople
             );
         expect(ReservationDraft::count())->toBe(0);
     }
 })->with([
     'empty capacity accepts a package' => [[], 'package', 4, 0, true, 0],
-    '96 plus package 4 reaches exactly 100' => [[[ 'people' => 96 ]], 'package', 4, 0, true, 96],
-    '96 plus non-package 5 exceeds capacity' => [[[ 'people' => 96 ]], 'without_package', 5, 0, false, 96],
-    'full capacity rejects one more person' => [[[ 'people' => 100 ]], 'without_package', 1, 0, false, 100],
-    '90 plus non-package 10 reaches exactly 100' => [[[ 'people' => 90 ]], 'without_package', 10, 0, true, 90],
-    '90 plus non-package 11 exceeds capacity' => [[[ 'people' => 90 ]], 'without_package', 11, 0, false, 90],
+    '96 plus package 4 reaches exactly 100' => [[['people' => 96]], 'package', 4, 0, true, 96],
+    '96 plus non-package 5 exceeds capacity' => [[['people' => 96]], 'without_package', 5, 0, false, 96],
+    'full capacity rejects one more person' => [[['people' => 100]], 'without_package', 1, 0, false, 100],
+    '90 plus non-package 10 reaches exactly 100' => [[['people' => 90]], 'without_package', 10, 0, true, 90],
+    '90 plus non-package 11 exceeds capacity' => [[['people' => 90]], 'without_package', 11, 0, false, 90],
     'cancelled four people do not consume capacity' => [[['people' => 96], ['package' => true, 'status' => 'cancelled', 'payment_status' => 'paid']], 'package', 4, 0, true, 96],
+    'checked-in bookings continue to consume capacity' => [[['people' => 100, 'status' => 'checked_in']], 'package', 4, 0, false, 100],
+    'checked-out bookings continue to consume capacity' => [[['people' => 100, 'status' => 'checked_out']], 'package', 4, 0, false, 100],
+    'no-show bookings do not consume capacity' => [[['people' => 100, 'status' => 'no_show']], 'package', 4, 0, true, 0],
     'other date capacity is isolated' => [[['people' => 100, 'date_offset' => 0]], 'package', 4, 1, true, 0],
     'mixed packages and non-package total 18 people' => [[['package' => true], ['package' => true], ['people' => 10]], 'without_package', 83, 0, false, 18],
     'three packages total 12 people' => [[['package' => true], ['package' => true], ['package' => true]], 'without_package', 89, 0, false, 12],
@@ -289,12 +297,12 @@ test('finalization rechecks capacity after another draft consumes the remaining 
     ]);
 
     $drafts = collect(['FIRST', 'SECOND'])->map(fn (string $suffix): ReservationDraft => ReservationDraft::create([
-        'draft_code' => 'DRAFT-CAPACITY-' . $suffix,
+        'draft_code' => 'DRAFT-CAPACITY-'.$suffix,
         'reservation_type' => 'package',
         'package_id' => $package->id,
         'booking_date' => $bookingDate,
-        'name' => 'Customer ' . $suffix,
-        'email' => strtolower($suffix) . '@gmail.com',
+        'name' => 'Customer '.$suffix,
+        'email' => strtolower($suffix).'@gmail.com',
         'phone' => $suffix === 'FIRST' ? '081111111111' : '082222222222',
         'total_package' => 250000,
         'total_equipment' => 0,
@@ -315,6 +323,55 @@ test('finalization rechecks capacity after another draft consumes the remaining 
     expect(Booking::whereDate('booking_date', $bookingDate)->count())->toBe(2);
     expect(Booking::where('booking_code', $drafts[1]->draft_code)->exists())->toBeFalse();
 });
+
+test('package capacity uses the configured package capacity', function (int $packageCapacity, int $existingPeople, bool $allowed) {
+    $package = Package::create([
+        'name' => 'Capacity '.$packageCapacity,
+        'price' => 100000,
+        'capacity' => $packageCapacity,
+        'is_active' => true,
+    ]);
+    $bookingDate = now()->addDays(10)->toDateString();
+
+    if ($existingPeople > 0) {
+        Booking::create([
+            'booking_code' => 'BOOKING-PACKAGE-CAPACITY-'.$packageCapacity,
+            'booking_date' => $bookingDate,
+            'number_of_people' => $existingPeople,
+            'name' => 'Existing Capacity Guest',
+            'email' => 'existing.capacity@gmail.com',
+            'phone' => '081234567890',
+            'total_package' => 0,
+            'total_equipment' => 0,
+            'total_price' => 0,
+            'status' => 'confirmed',
+        ]);
+    }
+
+    $response = $this->from(route('reservasi'))->post(route('reservasi.store'), [
+        'reservation_type' => 'package',
+        'package_id' => $package->id,
+        'booking_date' => $bookingDate,
+        'name' => 'New Capacity Guest',
+        'email' => 'new.capacity@gmail.com',
+        'phone' => '082234567890',
+    ]);
+
+    if ($allowed) {
+        $response->assertRedirect();
+        expect(ReservationDraft::count())->toBe(1);
+    } else {
+        $response->assertRedirect(route('reservasi'))
+            ->assertSessionHas('capacity_reservation', fn (array $summary): bool => $summary['requested_capacity'] === $packageCapacity
+                && $summary['used_capacity'] === $existingPeople
+            );
+        expect(ReservationDraft::count())->toBe(0);
+    }
+})->with([
+    'four-person package fills remaining capacity' => [4, 96, true],
+    'six-person package exceeds remaining capacity' => [6, 95, false],
+    'ten-person package fills remaining capacity' => [10, 90, true],
+]);
 
 test('exact active package duplicate is rejected before creating a draft', function (string $bookingStatus) {
     $package = Package::create([
@@ -384,7 +441,7 @@ test('a package reservation is allowed when one exact-match field differs', func
     $bookingDate = now()->addDays(10)->toDateString();
 
     Booking::create([
-        'booking_code' => 'BOOKING-MISMATCH-' . strtoupper($difference),
+        'booking_code' => 'BOOKING-MISMATCH-'.strtoupper($difference),
         'package_id' => $package->id,
         'booking_date' => $bookingDate,
         'name' => 'Ayu Lestari',
@@ -464,7 +521,7 @@ test('duplicate check endpoint uses the same exact active matching rules', funct
     $bookingDate = now()->addDays(10)->toDateString();
 
     Booking::create([
-        'booking_code' => 'BOOKING-CHECK-' . strtoupper($bookingStatus . $email),
+        'booking_code' => 'BOOKING-CHECK-'.strtoupper($bookingStatus.$email),
         'package_id' => $package->id,
         'booking_date' => $bookingDate,
         'name' => 'Ayu Lestari',
@@ -587,7 +644,7 @@ test('online callback refuses a duplicate that appears after form submission', f
         'order_id' => $orderId,
         'status_code' => $statusCode,
         'gross_amount' => $grossAmount,
-        'signature_key' => hash('sha512', $orderId . $statusCode . $grossAmount . 'test-server-key'),
+        'signature_key' => hash('sha512', $orderId.$statusCode.$grossAmount.'test-server-key'),
         'transaction_status' => 'settlement',
         'transaction_id' => 'MIDTRANS-RACE-SECOND',
     ])->assertStatus(409);
@@ -603,7 +660,7 @@ test('verified Midtrans full and DP payments receive the correct payment status'
     config(['services.midtrans.server_key' => 'test-server-key']);
 
     $draft = ReservationDraft::create([
-        'draft_code' => 'DRAFT-MIDTRANS-' . strtoupper(Str::random(4)),
+        'draft_code' => 'DRAFT-MIDTRANS-'.strtoupper(Str::random(4)),
         'reservation_type' => 'without_package',
         'booking_date' => now()->addDays(10)->toDateString(),
         'number_of_people' => 2,
@@ -615,9 +672,9 @@ test('verified Midtrans full and DP payments receive the correct payment status'
         'total_price' => 100000,
         'status' => 'pending',
     ]);
-    $orderId = $draft->draft_code . '-20261003123456';
+    $orderId = $draft->draft_code.'-20261003123456';
     $statusCode = '200';
-    $signature = hash('sha512', $orderId . $statusCode . $grossAmount . config('services.midtrans.server_key'));
+    $signature = hash('sha512', $orderId.$statusCode.$grossAmount.config('services.midtrans.server_key'));
 
     $this->post(route('midtrans.callback'), [
         'order_id' => $orderId,
@@ -625,7 +682,7 @@ test('verified Midtrans full and DP payments receive the correct payment status'
         'gross_amount' => $grossAmount,
         'signature_key' => $signature,
         'transaction_status' => 'settlement',
-        'transaction_id' => 'MIDTRANS-' . strtoupper($paymentMethod),
+        'transaction_id' => 'MIDTRANS-'.strtoupper($paymentMethod),
     ])->assertOk();
 
     $booking = Booking::where('booking_code', $draft->draft_code)->firstOrFail();
@@ -649,7 +706,7 @@ test('admin confirmation changes only pending reservation status', function (str
         'is_active' => true,
     ]);
     $booking = Booking::create([
-        'booking_code' => 'BOOKING-RESERVATION-STATUS-' . strtoupper($reservationStatus . '-' . $paymentStatus),
+        'booking_code' => 'BOOKING-RESERVATION-STATUS-'.strtoupper($reservationStatus.'-'.$paymentStatus),
         'booking_date' => now()->addDays(10)->toDateString(),
         'number_of_people' => 1,
         'name' => 'Ayu Lestari',
@@ -674,7 +731,7 @@ test('admin confirmation changes only pending reservation status', function (str
             'paid' => 'qris_full',
             default => 'cash',
         },
-        'transaction_id' => 'TXN-INDEPENDENT-' . strtoupper($reservationStatus . '-' . $paymentStatus),
+        'transaction_id' => 'TXN-INDEPENDENT-'.strtoupper($reservationStatus.'-'.$paymentStatus),
         'amount' => $paymentStatus === 'dp' ? 7500 : 15000,
         'status' => $paymentStatus,
         'paid_at' => $paymentStatus === 'unpaid' ? null : now()->subDay(),
@@ -719,7 +776,7 @@ test('admin confirms unpaid Cash and DP as paid without changing transaction det
         'is_active' => true,
     ]);
     $booking = Booking::create([
-        'booking_code' => 'BOOKING-ADMIN-' . strtoupper($initialStatus),
+        'booking_code' => 'BOOKING-ADMIN-'.strtoupper($initialStatus),
         'booking_date' => now()->addDays(10)->toDateString(),
         'number_of_people' => 2,
         'name' => 'Ayu Lestari',
@@ -740,7 +797,7 @@ test('admin confirms unpaid Cash and DP as paid without changing transaction det
     $payment = Payment::create([
         'booking_id' => $booking->id,
         'payment_method' => $initialStatus === 'dp' ? 'qris_dp' : 'cash',
-        'transaction_id' => 'TXN-UNCHANGED-' . strtoupper($initialStatus),
+        'transaction_id' => 'TXN-UNCHANGED-'.strtoupper($initialStatus),
         'amount' => $initialStatus === 'dp' ? 15000 : 30000,
         'status' => $initialStatus,
         'paid_at' => $initialStatus === 'dp' ? now()->subDay() : null,
@@ -798,7 +855,7 @@ test('admin cancels active reservations without changing payment or equipment da
         'is_active' => true,
     ]);
     $booking = Booking::create([
-        'booking_code' => 'BOOKING-CANCEL-' . strtoupper($reservationStatus . '-' . $paymentStatus),
+        'booking_code' => 'BOOKING-CANCEL-'.strtoupper($reservationStatus.'-'.$paymentStatus),
         'booking_date' => now()->addDays(10)->toDateString(),
         'number_of_people' => 2,
         'name' => 'Ayu Lestari',
@@ -823,7 +880,7 @@ test('admin cancels active reservations without changing payment or equipment da
             'paid' => 'qris_full',
             default => 'cash',
         },
-        'transaction_id' => 'TXN-CANCEL-' . strtoupper($reservationStatus . '-' . $paymentStatus),
+        'transaction_id' => 'TXN-CANCEL-'.strtoupper($reservationStatus.'-'.$paymentStatus),
         'amount' => $paymentStatus === 'dp' ? 25000 : 50000,
         'status' => $paymentStatus,
         'paid_at' => $paymentStatus === 'unpaid' ? null : now()->subDay(),
@@ -938,4 +995,533 @@ test('cancelled booking frees capacity and no longer blocks duplicate reservatio
         ->assertRedirect();
 
     expect(ReservationDraft::count())->toBe(1);
+});
+
+test('no-show booking frees capacity and does not block an exact duplicate', function () {
+    $package = Package::create([
+        'name' => 'Paket No-show',
+        'price' => 250000,
+        'capacity' => 10,
+        'is_active' => true,
+    ]);
+    $bookingDate = now()->addDays(10)->toDateString();
+    $noShowBooking = Booking::create([
+        'booking_code' => 'BOOKING-NO-SHOW-FREES-SLOT',
+        'package_id' => $package->id,
+        'booking_date' => $bookingDate,
+        'name' => 'Ayu Lestari',
+        'email' => 'ayu@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 250000,
+        'total_equipment' => 0,
+        'total_price' => 250000,
+        'status' => 'no_show',
+    ]);
+
+    $this->from(route('reservasi'))
+        ->post(route('reservasi.store'), [
+            'reservation_type' => 'package',
+            'package_id' => $package->id,
+            'booking_date' => $bookingDate,
+            'name' => 'Ayu Lestari',
+            'email' => 'ayu@gmail.com',
+            'phone' => '081234567890',
+        ])
+        ->assertRedirect()
+        ->assertSessionMissing('duplicate_reservation');
+
+    expect(ReservationDraft::count())->toBe(1);
+    expect($noShowBooking->fresh()->status)->toBe('no_show');
+});
+
+test('admin checks in a cash booking by code during the WIB arrival window', function () {
+    $admin = User::factory()->create();
+    $this->actingAs($admin);
+    $bookingDate = '2026-11-10';
+    $this->travelTo(Carbon::parse($bookingDate.' 14:00:00', 'Asia/Jakarta'));
+
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-CHECK-IN-CASH',
+        'booking_date' => $bookingDate,
+        'number_of_people' => 2,
+        'name' => 'Ayu Lestari',
+        'email' => 'ayu@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 30000,
+        'total_equipment' => 0,
+        'total_price' => 30000,
+        'status' => 'confirmed',
+    ]);
+    $payment = Payment::create([
+        'booking_id' => $booking->id,
+        'payment_method' => 'cash',
+        'transaction_id' => 'CASH-CHECK-IN-UNPAID',
+        'amount' => 30000,
+        'status' => 'unpaid',
+    ]);
+
+    $action = BookingResource::checkInAction()->record($booking);
+    expect($action->isVisible())->toBeTrue();
+    ($action->getActionFunction())($booking, ['booking_code' => $booking->booking_code]);
+
+    expect($booking->fresh()->status)->toBe('checked_in');
+    expect($booking->fresh()->checked_in_at?->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'))
+        ->toBe($bookingDate.' 14:00:00');
+    expect($booking->fresh()->checked_in_by)->toBe($admin->id);
+    expect($payment->fresh()->status)->toBe('unpaid');
+    expect($payment->fresh()->transaction_id)->toBe('CASH-CHECK-IN-UNPAID');
+});
+
+test('an already paid online booking uses the same late-arrival check-in window', function () {
+    $admin = User::factory()->create();
+    $this->actingAs($admin);
+    $bookingDate = '2026-11-10';
+    $this->travelTo(Carbon::parse($bookingDate.' 23:59:59', 'Asia/Jakarta'));
+    $package = Package::create([
+        'name' => 'Paket Late Check-in',
+        'price' => 200000,
+        'capacity' => 6,
+        'is_active' => true,
+    ]);
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-CHECK-IN-ONLINE',
+        'package_id' => $package->id,
+        'booking_date' => $bookingDate,
+        'name' => 'Guest Online',
+        'email' => 'online@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 200000,
+        'total_equipment' => 0,
+        'total_price' => 200000,
+        'status' => 'pending_confirmation',
+    ]);
+    $payment = Payment::create([
+        'booking_id' => $booking->id,
+        'payment_method' => 'qris_dp',
+        'transaction_id' => 'MIDTRANS-ONLINE-CHECK-IN',
+        'amount' => 100000,
+        'status' => 'dp',
+        'paid_at' => now('Asia/Jakarta')->subDays(2),
+    ]);
+    $paymentBefore = Payment::findOrFail($payment->id)->getRawOriginal();
+    ksort($paymentBefore);
+
+    BookingResource::checkInAction()->getActionFunction()($booking, [
+        'booking_code' => $booking->booking_code,
+    ]);
+
+    expect($booking->fresh()->status)->toBe('checked_in');
+    expect($booking->fresh()->checked_in_at?->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'))
+        ->toBe($bookingDate.' 23:59:59');
+    expect($booking->fresh()->capacityPeople())->toBe(6);
+    $paymentAfter = $payment->fresh()->getRawOriginal();
+    ksort($paymentAfter);
+    expect($paymentAfter)->toBe($paymentBefore);
+});
+
+test('check-in rejects the wrong code, an invalid window, repeated attempts, and cancelled bookings', function (string $bookingDate, string $currentTime, string $status, string $code, string $message) {
+    $this->actingAs(User::factory()->create());
+    $this->travelTo(Carbon::parse($currentTime, 'Asia/Jakarta'));
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-CHECK-IN-REJECT',
+        'booking_date' => $bookingDate,
+        'number_of_people' => 1,
+        'name' => 'Guest',
+        'email' => 'guest@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 15000,
+        'total_equipment' => 0,
+        'total_price' => 15000,
+        'status' => $status,
+    ]);
+    if ($status === 'checked_in') {
+        $booking->checked_in_at = Carbon::parse('2026-11-10 15:00:00', 'Asia/Jakarta');
+        $booking->save();
+    }
+
+    try {
+        BookingResource::checkInAction()->getActionFunction()($booking, ['booking_code' => $code]);
+        test()->fail('Expected check-in validation to fail.');
+    } catch (ValidationException $exception) {
+        expect(collect($exception->errors())->flatten()->implode(' '))->toContain($message);
+    }
+
+    expect($booking->fresh()->status)->toBe($status);
+})->with([
+    'before 14:00' => ['2026-11-10', '2026-11-10 13:59:59', 'confirmed', 'BOOKING-CHECK-IN-REJECT', 'pukul 14.00'],
+    'at midnight after check-in date' => ['2026-11-10', '2026-11-11 00:00:00', 'confirmed', 'BOOKING-CHECK-IN-REJECT', 'pukul 14.00'],
+    'wrong booking code' => ['2026-11-10', '2026-11-10 15:00:00', 'confirmed', 'WRONG-CODE', 'Kode booking tidak cocok'],
+    'repeated check-in' => ['2026-11-10', '2026-11-10 16:00:00', 'checked_in', 'BOOKING-CHECK-IN-REJECT', 'tidak dapat diproses'],
+    'cancelled booking' => ['2026-11-10', '2026-11-10 16:00:00', 'cancelled', 'BOOKING-CHECK-IN-REJECT', 'tidak dapat diproses'],
+]);
+
+test('check-out requires check-in and is recorded from 08:00 WIB the next day', function () {
+    $admin = User::factory()->create();
+    $this->actingAs($admin);
+    $bookingDate = '2026-11-10';
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-CHECK-OUT',
+        'booking_date' => $bookingDate,
+        'number_of_people' => 2,
+        'name' => 'Guest',
+        'email' => 'guest@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 30000,
+        'total_equipment' => 0,
+        'total_price' => 30000,
+        'status' => 'confirmed',
+    ]);
+    $checkout = BookingResource::checkOutAction()->getActionFunction();
+
+    try {
+        $checkout($booking);
+        test()->fail('Expected check-out without check-in to fail.');
+    } catch (ValidationException $exception) {
+        expect(collect($exception->errors())->flatten()->implode(' '))->toContain('harus sudah check-in');
+    }
+
+    expect($booking->fresh()->status)->toBe('confirmed');
+
+    $booking->update([
+        'status' => 'checked_in',
+        'checked_in_at' => Carbon::parse($bookingDate.' 15:00:00', 'Asia/Jakarta'),
+        'checked_in_by' => $admin->id,
+    ]);
+    $this->travelTo(Carbon::parse('2026-11-11 07:59:59', 'Asia/Jakarta'));
+
+    try {
+        $checkout($booking->fresh());
+        test()->fail('Expected check-out before 08:00 to fail.');
+    } catch (ValidationException $exception) {
+        expect(collect($exception->errors())->flatten()->implode(' '))->toContain('pukul 08.00');
+    }
+
+    expect($booking->fresh()->status)->toBe('checked_in');
+
+    $this->travelTo(Carbon::parse('2026-11-11 08:00:00', 'Asia/Jakarta'));
+    $checkout($booking->fresh());
+
+    expect($booking->fresh()->status)->toBe('checked_out');
+    expect($booking->fresh()->checked_out_at?->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'))
+        ->toBe('2026-11-11 08:00:00');
+    expect($booking->fresh()->checked_out_by)->toBe($admin->id);
+});
+
+test('no-show remains a candidate until an admin confirms it and releases unhanded stock once', function () {
+    $admin = User::factory()->create();
+    $this->actingAs($admin);
+    $this->travelTo(Carbon::parse('2026-11-10 14:00:00', 'Asia/Jakarta'));
+    $equipment = Equipment::create([
+        'name' => 'Tenda No-show',
+        'price' => 20000,
+        'stock' => 3,
+        'is_active' => true,
+    ]);
+    $handedEquipment = Equipment::create([
+        'name' => 'Matras No-show',
+        'price' => 10000,
+        'stock' => 4,
+        'is_active' => true,
+    ]);
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-NO-SHOW-STOCK',
+        'booking_date' => '2026-11-10',
+        'number_of_people' => 2,
+        'name' => 'Guest',
+        'email' => 'guest@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 30000,
+        'total_equipment' => 30000,
+        'total_price' => 60000,
+        'status' => 'confirmed',
+    ]);
+    $unhandedLine = BookingEquipment::create([
+        'booking_id' => $booking->id,
+        'equipment_id' => $equipment->id,
+        'quantity' => 2,
+        'price' => 20000,
+        'subtotal' => 40000,
+    ]);
+    $handedLine = BookingEquipment::create([
+        'booking_id' => $booking->id,
+        'equipment_id' => $handedEquipment->id,
+        'quantity' => 1,
+        'price' => 10000,
+        'subtotal' => 10000,
+        'handed_over_at' => now('Asia/Jakarta')->subHours(2),
+    ]);
+    $payment = Payment::create([
+        'booking_id' => $booking->id,
+        'payment_method' => 'qris_full',
+        'transaction_id' => 'MIDTRANS-NO-SHOW-PAID',
+        'amount' => 60000,
+        'status' => 'paid',
+        'paid_at' => now('Asia/Jakarta')->subDays(2),
+    ]);
+    $paymentBefore = Payment::findOrFail($payment->id)->getRawOriginal();
+    ksort($paymentBefore);
+
+    expect($booking->fresh()->status)->toBe('confirmed');
+    expect(BookingResource::markNoShowAction()->record($booking)->isVisible())->toBeTrue();
+
+    $action = BookingResource::markNoShowAction();
+    ($action->getActionFunction())($booking, [
+        'booking_code' => $booking->booking_code,
+        'absence_verified' => true,
+        'equipment_not_handed_over' => true,
+    ]);
+
+    expect($booking->fresh()->status)->toBe('no_show');
+    expect($booking->fresh()->no_show_confirmed_by)->toBe($admin->id);
+    expect($booking->fresh()->no_show_at)->not->toBeNull();
+    expect($equipment->fresh()->stock)->toBe(5);
+    expect($handedEquipment->fresh()->stock)->toBe(4);
+    expect($unhandedLine->fresh()->stock_released_at)->not->toBeNull();
+    expect($handedLine->fresh()->stock_released_at)->toBeNull();
+    $paymentAfter = $payment->fresh()->getRawOriginal();
+    ksort($paymentAfter);
+    expect($paymentAfter)->toBe($paymentBefore);
+
+    try {
+        ($action->getActionFunction())($booking->fresh(), [
+            'booking_code' => $booking->booking_code,
+            'absence_verified' => true,
+            'equipment_not_handed_over' => true,
+        ]);
+        test()->fail('Expected repeated no-show confirmation to fail.');
+    } catch (ValidationException $exception) {
+        expect(collect($exception->errors())->flatten()->implode(' '))->toContain('belum memenuhi syarat');
+    }
+
+    expect($equipment->fresh()->stock)->toBe(5);
+    $paymentAfter = $payment->fresh()->getRawOriginal();
+    ksort($paymentAfter);
+    expect($paymentAfter)->toBe($paymentBefore);
+});
+
+test('a no-show cannot be confirmed before the arrival window has ended', function () {
+    $this->actingAs(User::factory()->create());
+    $this->travelTo(Carbon::parse('2026-11-10 13:59:59', 'Asia/Jakarta'));
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-NO-SHOW-TOO-EARLY',
+        'booking_date' => '2026-11-10',
+        'number_of_people' => 1,
+        'name' => 'Guest',
+        'email' => 'guest@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 15000,
+        'total_equipment' => 0,
+        'total_price' => 15000,
+        'status' => 'confirmed',
+    ]);
+
+    try {
+        BookingResource::markNoShowAction()->getActionFunction()($booking, [
+            'booking_code' => $booking->booking_code,
+            'absence_verified' => true,
+            'equipment_not_handed_over' => true,
+        ]);
+        test()->fail('Expected early no-show confirmation to fail.');
+    } catch (ValidationException $exception) {
+        expect(collect($exception->errors())->flatten()->implode(' '))->toContain('belum memenuhi syarat');
+    }
+
+    expect($booking->fresh()->status)->toBe('confirmed');
+});
+
+test('check-in and no-show actions become available together at 14:00 WIB on booking date', function () {
+    $this->actingAs(User::factory()->create());
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-ARRIVAL-ACTIONS-14',
+        'booking_date' => '2026-11-10',
+        'number_of_people' => 1,
+        'name' => 'Guest',
+        'email' => 'guest.actions@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 15000,
+        'total_equipment' => 0,
+        'total_price' => 15000,
+        'status' => 'confirmed',
+    ]);
+    $checkInAction = BookingResource::checkInAction();
+    $noShowAction = BookingResource::markNoShowAction();
+
+    $this->travelTo(Carbon::parse('2026-11-10 13:59:59', 'Asia/Jakarta'));
+    expect($checkInAction->record($booking)->isVisible())->toBeFalse();
+    expect($noShowAction->record($booking)->isVisible())->toBeFalse();
+
+    $this->travelTo(Carbon::parse('2026-11-10 14:00:00', 'Asia/Jakarta'));
+    expect($checkInAction->record($booking)->isVisible())->toBeTrue();
+    expect($noShowAction->record($booking)->isVisible())->toBeTrue();
+});
+
+test('no-show rejects check-in and check-out timestamps even when booking status is inconsistent', function (string $status, ?string $checkedInAt, ?string $checkedOutAt) {
+    $this->actingAs(User::factory()->create());
+    $this->travelTo(Carbon::parse('2026-11-11 00:00:00', 'Asia/Jakarta'));
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-NO-SHOW-INCONSISTENT-'.strtoupper($status.($checkedInAt ? '-IN' : '').($checkedOutAt ? '-OUT' : '')),
+        'booking_date' => '2026-11-10',
+        'number_of_people' => 1,
+        'name' => 'Guest',
+        'email' => 'guest@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 15000,
+        'total_equipment' => 0,
+        'total_price' => 15000,
+        'status' => $status,
+        'checked_in_at' => $checkedInAt ? Carbon::parse($checkedInAt, 'Asia/Jakarta') : null,
+        'checked_out_at' => $checkedOutAt ? Carbon::parse($checkedOutAt, 'Asia/Jakarta') : null,
+    ]);
+
+    expect(BookingResource::markNoShowAction()->record($booking)->isVisible())->toBeFalse();
+
+    try {
+        BookingResource::markNoShowAction()->getActionFunction()($booking, [
+            'booking_code' => $booking->booking_code,
+            'absence_verified' => true,
+            'equipment_not_handed_over' => true,
+        ]);
+        test()->fail('Expected inconsistent attendance data to block no-show.');
+    } catch (ValidationException $exception) {
+        expect(collect($exception->errors())->flatten()->implode(' '))->toContain('belum memenuhi syarat');
+    }
+
+    expect($booking->fresh()->status)->toBe($status)
+        ->and($booking->fresh()->checked_in_at?->toDateTimeString())->toBe($checkedInAt
+            ? Carbon::parse($checkedInAt, 'Asia/Jakarta')->toDateTimeString()
+            : null)
+        ->and($booking->fresh()->checked_out_at?->toDateTimeString())->toBe($checkedOutAt
+            ? Carbon::parse($checkedOutAt, 'Asia/Jakarta')->toDateTimeString()
+            : null);
+})->with([
+    'checked-in status without check-in timestamp' => ['checked_in', null, null],
+    'checked-out status without check-out timestamp' => ['checked_out', null, null],
+    'confirmed status with check-in timestamp' => ['confirmed', '2026-11-10 15:00:00', null],
+    'confirmed status with check-out timestamp' => ['confirmed', null, '2026-11-11 08:00:00'],
+    'checked-in status with check-out timestamp' => ['checked_in', null, '2026-11-11 08:00:00'],
+]);
+
+test('legacy paid booking requires explicit no-show verification and never automatically releases uncertain equipment', function () {
+    $this->actingAs(User::factory()->create());
+    $this->travelTo(Carbon::parse('2026-11-11 00:00:00', 'Asia/Jakarta'));
+    $equipment = Equipment::create([
+        'name' => 'Legacy No-show Tent',
+        'price' => 20000,
+        'stock' => 1,
+        'is_active' => true,
+    ]);
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-LEGACY-NO-SHOW',
+        'booking_date' => '2026-11-10',
+        'number_of_people' => 2,
+        'name' => 'Legacy Guest',
+        'email' => 'legacy.guest@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 30000,
+        'total_equipment' => 40000,
+        'total_price' => 70000,
+        'status' => 'confirmed',
+    ]);
+    $booking->attendance_tracking_enabled_at = null;
+    $booking->save();
+    $bookingEquipment = BookingEquipment::create([
+        'booking_id' => $booking->id,
+        'equipment_id' => $equipment->id,
+        'quantity' => 2,
+        'price' => 20000,
+        'subtotal' => 40000,
+    ]);
+    $payment = Payment::create([
+        'booking_id' => $booking->id,
+        'payment_method' => 'qris_full',
+        'transaction_id' => 'MIDTRANS-LEGACY-NO-SHOW-PAID',
+        'amount' => 70000,
+        'status' => 'paid',
+        'paid_at' => now('Asia/Jakarta')->subDays(2),
+    ]);
+    $paymentBefore = Payment::findOrFail($payment->id)->getRawOriginal();
+    ksort($paymentBefore);
+
+    expect($booking->fresh()->attendance_tracking_enabled_at)->toBeNull();
+
+    $action = BookingResource::markNoShowAction();
+    ($action->getActionFunction())($booking, [
+        'booking_code' => $booking->booking_code,
+        'absence_verified' => true,
+        'equipment_not_handed_over' => false,
+    ]);
+
+    expect($booking->fresh()->status)->toBe('no_show');
+    expect($booking->fresh()->no_show_confirmed_by)->not->toBeNull();
+    expect($equipment->fresh()->stock)->toBe(1);
+    expect($bookingEquipment->fresh()->stock_released_at)->toBeNull();
+
+    $paymentAfter = $payment->fresh()->getRawOriginal();
+    ksort($paymentAfter);
+    expect($paymentAfter)->toBe($paymentBefore);
+    expect(BookingResource::markNoShowAction()->record($booking->fresh())->isVisible())->toBeFalse();
+});
+
+test('legacy equipment is released only after the admin explicitly verifies it was not handed over', function () {
+    $this->actingAs(User::factory()->create());
+    $this->travelTo(Carbon::parse('2026-11-11 00:00:00', 'Asia/Jakarta'));
+    $equipment = Equipment::create([
+        'name' => 'Verified Legacy Tent',
+        'price' => 20000,
+        'stock' => 1,
+        'is_active' => true,
+    ]);
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-LEGACY-EQUIPMENT-VERIFIED',
+        'booking_date' => '2026-11-10',
+        'number_of_people' => 1,
+        'name' => 'Legacy Guest',
+        'email' => 'legacy.verify@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 15000,
+        'total_equipment' => 20000,
+        'total_price' => 35000,
+        'status' => 'pending_confirmation',
+    ]);
+    $booking->attendance_tracking_enabled_at = null;
+    $booking->save();
+    $bookingEquipment = BookingEquipment::create([
+        'booking_id' => $booking->id,
+        'equipment_id' => $equipment->id,
+        'quantity' => 2,
+        'price' => 20000,
+        'subtotal' => 40000,
+    ]);
+
+    BookingResource::markNoShowAction()->getActionFunction()($booking, [
+        'booking_code' => $booking->booking_code,
+        'absence_verified' => true,
+        'equipment_not_handed_over' => true,
+    ]);
+
+    expect($booking->fresh()->status)->toBe('no_show');
+    expect($equipment->fresh()->stock)->toBe(3);
+    expect($bookingEquipment->fresh()->stock_released_at)->not->toBeNull();
+});
+
+test('legacy bookings remain readable with null attendance fields', function () {
+    $booking = Booking::create([
+        'booking_code' => 'BOOKING-LEGACY-ATTENDANCE',
+        'booking_date' => now()->addDays(10)->toDateString(),
+        'number_of_people' => 3,
+        'name' => 'Legacy Guest',
+        'email' => 'legacy@gmail.com',
+        'phone' => '081234567890',
+        'total_package' => 45000,
+        'total_equipment' => 0,
+        'total_price' => 45000,
+        'status' => 'confirmed',
+    ]);
+
+    expect($booking->fresh()->checked_in_at)->toBeNull()
+        ->and($booking->fresh()->checked_out_at)->toBeNull()
+        ->and($booking->fresh()->no_show_at)->toBeNull()
+        ->and($booking->fresh()->checkedInBy)->toBeNull()
+        ->and($booking->fresh()->checkedOutBy)->toBeNull()
+        ->and($booking->fresh()->noShowConfirmedBy)->toBeNull();
 });

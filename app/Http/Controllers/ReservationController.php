@@ -21,8 +21,6 @@ use Midtrans\Transaction;
 
 class ReservationController extends Controller
 {
-    private const PACKAGE_CAPACITY = 4;
-
     public function index()
     {
         $packages = Package::where('is_active', true)->get();
@@ -66,16 +64,15 @@ class ReservationController extends Controller
     {
         $bookingDate = Carbon::parse($bookingDate)->toDateString();
         $bookedPeople = Booking::query()
+            ->with('package')
             ->whereDate('booking_date', $bookingDate)
-            ->whereIn('status', ['pending_confirmation', 'confirmed'])
+            ->whereIn('status', Booking::CAPACITY_BLOCKING_STATUSES)
             ->get(['package_id', 'number_of_people'])
-            ->sum(fn (Booking $booking): int => $booking->package_id !== null
-                ? self::PACKAGE_CAPACITY
-                : (int) $booking->number_of_people);
+            ->sum(fn (Booking $booking): int => $booking->capacityPeople());
 
         $capacity = (int) config('reservasi.location_capacity', 100);
         $requestedPeople = $packageId !== null
-            ? self::PACKAGE_CAPACITY
+            ? (int) (Package::query()->whereKey($packageId)->value('capacity') ?? 0)
             : (int) $numberOfPeople;
 
         return [
@@ -112,7 +109,7 @@ class ReservationController extends Controller
     ): bool {
         $query = Booking::query()
             ->whereDate('booking_date', Carbon::parse($bookingDate)->toDateString())
-            ->whereIn('status', ['pending_confirmation', 'confirmed']);
+            ->whereIn('status', Booking::CAPACITY_BLOCKING_STATUSES);
 
         if ($reservationType === 'package') {
             $query->where('package_id', $packageId);

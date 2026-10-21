@@ -9,6 +9,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 uses(RefreshDatabase::class);
 
+beforeEach(function () {
+    $this->withoutVite();
+});
+
 test('payment method labels preserve internal payment method values', function () {
     expect(PaymentMethodLabels::label('qris_full'))->toBe('Pembayaran Online - Lunas');
     expect(PaymentMethodLabels::label('qris_dp'))->toBe('Pembayaran Online - DP 50%');
@@ -65,6 +69,8 @@ test('reservation dashboard stats read payment and booking statuses without writ
     $pendingBooking = $createBooking('DASH-PENDING', 'pending_confirmation');
     $confirmedBooking = $createBooking('DASH-CONFIRMED', 'confirmed');
     $cancelledBooking = $createBooking('DASH-CANCELLED', 'cancelled');
+    $checkedInBooking = $createBooking('DASH-CHECKED-IN', 'checked_in');
+    $noShowBooking = $createBooking('DASH-NO-SHOW', 'no_show');
 
     $createPayment = function (Booking $booking, string $method, string $status, float $amount): Payment {
         return Payment::create([
@@ -80,6 +86,8 @@ test('reservation dashboard stats read payment and booking statuses without writ
     $createPayment($pendingBooking, 'qris_full', 'paid', 2400000);
     $createPayment($confirmedBooking, 'qris_dp', 'dp', 50000);
     $createPayment($cancelledBooking, 'cash', 'unpaid', 2500000);
+    $createPayment($checkedInBooking, 'cash', 'paid', 20000);
+    $createPayment($noShowBooking, 'qris_full', 'paid', 30000);
 
     $bookingsBefore = Booking::query()->orderBy('id')->get()->map->getAttributes()->all();
     $paymentsBefore = Payment::query()->orderBy('id')->get()->map->getAttributes()->all();
@@ -94,15 +102,19 @@ test('reservation dashboard stats read payment and booking statuses without writ
 
     $stats = $widget->statsForTest();
 
-    expect($stats)->toHaveCount(4);
+    expect($stats)->toHaveCount(6);
     expect($stats[0]->getLabel())->toBe('Total Pembayaran Diterima');
-    expect($stats[0]->getValue())->toBe('Rp2.450.000');
+    expect($stats[0]->getValue())->toBe('Rp2.500.000');
     expect($stats[1]->getLabel())->toBe('Menunggu Konfirmasi');
     expect($stats[1]->getValue())->toBe(1);
     expect($stats[2]->getLabel())->toBe('Reservasi Dikonfirmasi');
     expect($stats[2]->getValue())->toBe(1);
-    expect($stats[3]->getLabel())->toBe('Belum Dibayar');
+    expect($stats[3]->getLabel())->toBe('Sudah Check-in');
     expect($stats[3]->getValue())->toBe(1);
+    expect($stats[4]->getLabel())->toBe('No-show');
+    expect($stats[4]->getValue())->toBe(1);
+    expect($stats[5]->getLabel())->toBe('Belum Dibayar');
+    expect($stats[5]->getValue())->toBe(1);
 
     expect(Booking::query()->orderBy('id')->get()->map->getAttributes()->all())->toBe($bookingsBefore);
     expect(Payment::query()->orderBy('id')->get()->map->getAttributes()->all())->toBe($paymentsBefore);

@@ -98,6 +98,9 @@
                 'pending_confirmation' => 'Menunggu Konfirmasi',
                 'confirmed' => 'Dikonfirmasi',
                 'cancelled' => 'Dibatalkan',
+                'checked_in' => 'Sudah Check-in',
+                'checked_out' => 'Sudah Check-out',
+                'no_show' => 'No-show',
             ];
             $bookingStatus = $bookingStatusLabels[$booking->status] ?? ucfirst((string) $booking->status);
             $paymentStatus = $paymentStatusLabels[$payment?->status] ?? ucfirst((string) ($payment?->status ?? 'Belum tercatat'));

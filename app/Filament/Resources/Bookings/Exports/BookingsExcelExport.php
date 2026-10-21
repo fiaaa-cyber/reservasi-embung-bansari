@@ -19,8 +19,6 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class BookingsExcelExport implements FromQuery, WithHeadings, WithMapping, WithStyles, WithColumnWidths
 {
-    private const PACKAGE_CAPACITY = 4;
-
     private const HEADERS = [
         'No',
         'Kode Booking',
@@ -48,7 +46,7 @@ class BookingsExcelExport implements FromQuery, WithHeadings, WithMapping, WithS
         $this->filters = Validator::make($filters, [
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
-            'status' => ['required', 'in:all,pending_confirmation,confirmed,cancelled'],
+            'status' => ['required', 'in:all,pending_confirmation,confirmed,cancelled,checked_in,checked_out,no_show'],
             'reservation_type' => ['required', 'in:all,package,without_package'],
         ])->validate();
     }
@@ -95,13 +93,16 @@ class BookingsExcelExport implements FromQuery, WithHeadings, WithMapping, WithS
             $booking->booking_date?->format('d/m/Y') ?? '-',
             $isPackage ? 'Paket' : 'Non-Paket',
             $isPackage ? ($booking->package?->name ?? '-') : '-',
-            $isPackage ? self::PACKAGE_CAPACITY : (int) $booking->number_of_people,
+            $booking->capacityPeople(),
             $equipment !== '' ? $equipment : '-',
             'Rp ' . number_format((float) $booking->total_price, 0, ',', '.'),
             match ($booking->status) {
                 'pending_confirmation' => 'Menunggu Konfirmasi',
                 'confirmed' => 'Dikonfirmasi',
                 'cancelled' => 'Dibatalkan',
+                'checked_in' => 'Sudah Check-in',
+                'checked_out' => 'Sudah Check-out',
+                'no_show' => 'No-show',
                 default => ucfirst($booking->status),
             },
             PaymentMethodLabels::label($booking->payment?->payment_method),
